@@ -4,7 +4,7 @@ import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from config import BOT, CHANNEL_ID, REQUIRED_CHANNELS
+from config import TOKEN, CHANNEL_ID, REQUIRED_CHANNELS
 from database import create_giveaway, get_expired_giveaways, delete_giveaway, get_participants, add_participant
 from giveaway import check_participation
 
@@ -125,7 +125,7 @@ async def check_giveaway_expiry(context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Menjalankan bot."""
-    app = Application.builder().token(BOT).build()
+    app = Application.builder().token(TOKEN).build()
 
     # Menambahkan handler untuk perintah dan callback
     app.add_handler(CommandHandler("start", start))
