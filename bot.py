@@ -4,9 +4,12 @@ import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from config import TOKEN, CHANNEL_ID, REQUIRED_CHANNELS
 from database import create_giveaway, get_expired_giveaways, delete_giveaway, get_participants, add_participant
 from giveaway import check_participation
+
+TOKEN = "7517064569:AAETTbhQtkk-aXeZza1nGElFJxz9LzVgWYc"
+CHANNEL_ID = "@thyrae"
+REQUIRED_CHANNELS = ["@decavstore", "@thyrae"]
 
 # Konfigurasi logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
