@@ -1,4 +1,4 @@
 # config.py
 TOKEN = "7517064569:AAETTbhQtkk-aXeZza1nGElFJxz9LzVgWYc"
-CHANNEL_ID = "@thyrae"
-REQUIRED_CHANNELS = ["@decavstore", "@thyrae"]
+CHANNEL_ID = "@basepf"
+REQUIRED_CHANNELS = ["@basepf", "@decavstore"]

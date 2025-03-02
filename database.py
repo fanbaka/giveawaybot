@@ -30,6 +30,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS participants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             giveaway_id INTEGER,
+            user_id INTEGER UNIQUE,
             username TEXT,
             FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)
         )''')
@@ -66,12 +67,12 @@ async def check_giveaway_expiry(context: CallbackContext):
         message = f"🎉 Giveaway '{giveaway['title']}' telah berakhir! Pemenang akan diumumkan oleh {giveaway['organizer']}."
         await context.bot.send_message(chat_id="YOUR_CHANNEL_ID", text=message)
 
-def add_participant(giveaway_id, username):
-    conn = sqlite3.connect("giveaway.db", isolation_level=None)  # Non-blocking mode
+def add_participant(giveaway_id, user_id, username):
+    conn = sqlite3.connect("giveaway.db", isolation_level=None)  
     cursor = conn.cursor()
-    
+
     try:
-        cursor.execute("INSERT INTO participants (giveaway_id, username) VALUES (?, ?)", (giveaway_id, username))
+        cursor.execute("INSERT INTO participants (giveaway_id, user_id, username) VALUES (?, ?, ?)", (giveaway_id, user_id, username))
     except sqlite3.IntegrityError:
         pass  # Jika user sudah ada, tidak perlu error
 

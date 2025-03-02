@@ -58,26 +58,43 @@ async def new_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Error: Number of winners and duration must be integers.")
 
 
-
 async def join_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menangani pengguna yang ingin join giveaway."""
+    """Menangani pengguna yang ingin join giveaway tanpa menghapus tombol dan tanpa mengirim pesan baru."""
     query = update.callback_query
-    user_id = query.from_user.id
-    username = query.from_user.username
-    giveaway_id = query.data.split("_")[1]
 
-    # Check if the user has already joined
-    participants = get_participants(giveaway_id)
-    if username in participants:
-        await query.answer("✅ You have already joined this giveaway!", show_alert=True)
-        return
+    try:
+        user_id = query.from_user.id
+        username = query.from_user.username or f"user_{user_id}"
+        data = query.data.split("_")
 
-    # Check if the user has joined all required channels
-    if await check_participation(user_id):
-        add_participant(giveaway_id, username)
-        await query.answer("✅ Successfully joined the giveaway!", show_alert=True)
-    else:
-        await query.answer("❌ You must join all required channels first!", show_alert=True)
+        # Validasi giveaway_id
+        if len(data) < 2 or not data[1].isdigit():
+            await query.answer("❌ Invalid giveaway data!", show_alert=True)
+            return
+
+        giveaway_id = int(data[1])
+
+        # Cek apakah user sudah join sebelumnya
+        participants = get_participants(giveaway_id)
+        if user_id in participants:
+            await query.answer("✅ You have already joined this giveaway!", show_alert=True)
+            return
+
+        # Cek keanggotaan channel
+        is_joined = await check_participation(user_id)
+        if is_joined:
+            add_participant(giveaway_id, user_id, username)
+            message = "✅ Successfully joined the giveaway!"
+        else:
+            message = "❌ You must join all required channels first!"
+
+        # Notif di tengah layar
+        await query.answer(message, show_alert=True)
+
+    except Exception as e:
+        print(f"Error in join_giveaway: {e}")
+        await query.answer("⚠️ Error processing your request. Try again later!", show_alert=True)
+
 
 
 async def check_giveaway_expiry(context: ContextTypes.DEFAULT_TYPE):
@@ -125,7 +142,7 @@ async def check_giveaway_expiry(context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Menjalankan bot."""
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).pool_timeout(10).build()
 
     # Menambahkan handler untuk perintah dan callback
     app.add_handler(CommandHandler("start", start))
