@@ -1,106 +1,60 @@
-import sqlite3
-import os
-from config import TOKEN
+from supabase import create_client
 from datetime import datetime, timedelta
-from telegram.ext import ApplicationBuilder, CallbackContext
 
-def init_db():
-    db_path = "giveaway.db"
+# Setup koneksi ke Supabase
+SUPABASE_URL = "https://jskexleqowjcmzqdvjng.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impza2V4bGVxb3dqY216cWR2am5nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI1NDUzNjUsImV4cCI6MjA1ODEyMTM2NX0.Mx1YaEe-ewmQ0bsnlGnP9-ka94xuVJxG-UU7V9UGxJI"
 
-    # Cek apakah database ada, jika tidak, buat baru
-    if not os.path.exists(db_path):
-        print("⚠️ Database tidak ditemukan, membuat database baru...")
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-
-    # ✅ Buat tabel giveaways
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS giveaways (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            duration INTEGER,
-            num_winners INTEGER,
-            organizer TEXT,
-            end_time TEXT
-        )''')
-
-    # ✅ Buat tabel participants
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS participants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            giveaway_id INTEGER,
-            user_id INTEGER UNIQUE,
-            username TEXT,
-            FOREIGN KEY (giveaway_id) REFERENCES giveaways(id)
-        )''')
-
-    conn.commit()
-    conn.close()
-
-    print("✅ Database berhasil dibuat dengan tabel giveaways dan participants!")
-
-def create_giveaway(title, duration, num_winners, organizer):
-    conn = sqlite3.connect("giveaway.db")
-    cursor = conn.cursor()
+def create_giveaway(title, duration, num_winners, organizer, channel_id, required_channels, message_id):
+    """Membuat giveaway baru di Supabase dan menyimpan message_id untuk bisa diedit nanti."""
     end_time = (datetime.now() + timedelta(minutes=duration)).strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("INSERT INTO giveaways (title, duration, num_winners, organizer, end_time) VALUES (?, ?, ?, ?, ?)", 
-                   (title, duration, num_winners, organizer, end_time))
-    giveaway_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return giveaway_id
+    
+    data = {
+        "title": title,
+        "duration": duration,
+        "num_winners": num_winners,
+        "organizer": organizer,
+        "end_time": end_time,
+        "channel_id": channel_id,
+        "required_channels": required_channels,
+        "message_id": message_id
+    }
+    
+    response = supabase.table("giveaways").insert(data).execute()
+    if response.data:
+        return response.data[0]["id"]
+    return None
 
 def get_expired_giveaways():
-    conn = sqlite3.connect("giveaway.db")
-    cursor = conn.cursor()
+    """Mengambil daftar giveaway yang sudah berakhir."""
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("SELECT id, title, num_winners, organizer, end_time FROM giveaways WHERE end_time <= ?", (current_time,))
-    expired_giveaways = cursor.fetchall()
-    conn.close()
-    return [{"id": row[0], "title": row[1], "num_winners": row[2], "organizer": row[3], "end_time": row[4]} for row in expired_giveaways]
-
-# ✅ Tambahkan fungsi check_giveaway_expiry langsung di database.py agar tidak ada circular import
-async def check_giveaway_expiry(context: CallbackContext):
-    expired_giveaways = get_expired_giveaways()
-    for giveaway in expired_giveaways:
-        message = f"🎉 Giveaway '{giveaway['title']}' telah berakhir! Pemenang akan diumumkan oleh {giveaway['organizer']}."
-        await context.bot.send_message(chat_id="YOUR_CHANNEL_ID", text=message)
+    response = supabase.table("giveaways").select("*").lte("end_time", current_time).execute()
+    
+    return response.data if response.data else []
 
 def add_participant(giveaway_id, user_id, username):
-    conn = sqlite3.connect("giveaway.db", isolation_level=None)  
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("INSERT INTO participants (giveaway_id, user_id, username) VALUES (?, ?, ?)", (giveaway_id, user_id, username))
-    except sqlite3.IntegrityError:
-        pass  # Jika user sudah ada, tidak perlu error
-
-    conn.commit()
-    conn.close()
-
+    """Menambahkan peserta ke giveaway di Supabase."""
+    data = {
+        "giveaway_id": giveaway_id,
+        "user_id": user_id,
+        "username": username
+    }
+    
+    supabase.table("participants").insert(data).execute()
 
 def get_participants(giveaway_id):
-    conn = sqlite3.connect("giveaway.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT username FROM participants WHERE giveaway_id = ?", (giveaway_id,))
-    participants = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return participants
+    """Mengambil daftar peserta dari giveaway tertentu."""
+    response = supabase.table("participants").select("username").eq("giveaway_id", giveaway_id).execute()
+    
+    return [row["username"] for row in response.data] if response.data else []
 
 def delete_giveaway(giveaway_id):
-    conn = sqlite3.connect("giveaway.db")
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM giveaways WHERE id = ?", (giveaway_id,))
-    conn.commit()
-    conn.close()
+    """Menghapus giveaway dari Supabase."""
+    supabase.table("giveaways").delete().eq("id", giveaway_id).execute()
 
-def main():
-    init_db()
-    app = ApplicationBuilder().token(TOKEN).build()
-    job_queue = app.job_queue
-    job_queue.run_repeating(check_giveaway_expiry, interval=60, first=10)
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+def get_giveaway_details(giveaway_id):
+    """Mengambil detail giveaway berdasarkan ID."""
+    response = supabase.table("giveaways").select("*").eq("id", giveaway_id).single().execute()
+    return response.data if response.data else None

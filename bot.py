@@ -4,8 +4,8 @@ import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from config import TOKEN, CHANNEL_ID, REQUIRED_CHANNELS
-from database import create_giveaway, get_expired_giveaways, delete_giveaway, get_participants, add_participant
+from config import TOKEN
+from database import create_giveaway, get_expired_giveaways, delete_giveaway, get_participants, add_participant, get_giveaway_details
 from giveaway import check_participation
 
 # Konfigurasi logging
@@ -18,20 +18,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def new_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         args = context.args
-        if len(args) < 4:
-            await update.message.reply_text("Usage: /newgiveaway <prize_link> <duration (minutes)> <num_winners> <organizer>")
+        if len(args) < 6:
+            await update.message.reply_text("Usage: /newgiveaway <prize_link> <duration> <num_winners> <organizer> <channel_id> <required_channels (comma separated)>")
             return
         
-        title = args[0]  # Link hadiah
-        duration = int(args[-3])
-        num_winners = int(args[-2])
-        organizer = args[-1]
-        giveaway_id = create_giveaway(title, duration, num_winners, organizer)
+        title = args[0]
+        duration = int(args[1])
+        num_winners = int(args[2])
+        organizer = args[3]
+        channel_id = args[4]
+        required_channels = args[5].split(',')
 
+        giveaway_id = create_giveaway(title, duration, num_winners, organizer, channel_id, required_channels)
         end_time = datetime.now() + timedelta(minutes=duration)
-        end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")  # Format: YYYY-MM-DD HH:MM:SS
-
-        required_channels_text = "\n".join([f"{channel}" for channel in REQUIRED_CHANNELS])
+        end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+        required_channels_text = "\n".join([f"@{channel}" for channel in required_channels])
 
         buttons = [[InlineKeyboardButton("✅ Join & Participate", callback_data=f"join_{giveaway_id}")]]
         keyboard = InlineKeyboardMarkup(buttons)
@@ -47,7 +48,7 @@ async def new_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         await context.bot.send_message(
-            chat_id=CHANNEL_ID,
+            chat_id=channel_id,
             text=message,
             parse_mode="Markdown",
             reply_markup=keyboard
@@ -57,61 +58,54 @@ async def new_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except ValueError:
         await update.message.reply_text("Error: Number of winners and duration must be integers.")
 
-
 async def join_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menangani pengguna yang ingin join giveaway tanpa menghapus tombol dan tanpa mengirim pesan baru."""
     query = update.callback_query
-
     try:
         user_id = query.from_user.id
         username = query.from_user.username or f"user_{user_id}"
         data = query.data.split("_")
-
-        # Validasi giveaway_id
+        
         if len(data) < 2 or not data[1].isdigit():
             await query.answer("❌ Invalid giveaway data!", show_alert=True)
             return
-
+        
         giveaway_id = int(data[1])
-
-        # Cek apakah user sudah join sebelumnya
+        giveaway = get_giveaway_details(giveaway_id)
+        
+        if not giveaway:
+            await query.answer("❌ Giveaway not found!", show_alert=True)
+            return
+        
         participants = get_participants(giveaway_id)
-        if user_id in participants:
+        if username in participants:
             await query.answer("✅ You have already joined this giveaway!", show_alert=True)
             return
-
-        # Cek keanggotaan channel
-        is_joined = await check_participation(user_id)
+        
+        is_joined = await check_participation(user_id, giveaway_id)
         if is_joined:
             add_participant(giveaway_id, user_id, username)
             message = "✅ Successfully joined the giveaway!"
         else:
             message = "❌ You must join all required channels first!"
 
-        # Notif di tengah layar
         await query.answer(message, show_alert=True)
 
     except Exception as e:
         print(f"Error in join_giveaway: {e}")
         await query.answer("⚠️ Error processing your request. Try again later!", show_alert=True)
 
-
-
 async def check_giveaway_expiry(context: ContextTypes.DEFAULT_TYPE):
     expired_giveaways = get_expired_giveaways()
     for giveaway in expired_giveaways:
         participants = get_participants(giveaway["id"])
-        total_participants = len(participants)  # Hitung jumlah peserta
+        total_participants = len(participants)
         
-        end_time_str = giveaway["end_time"]  # Ambil dari database
-
         if participants:
             winners = random.sample(participants, min(len(participants), giveaway["num_winners"]))
             winner_mentions = ", ".join([f"@{w}" for w in winners])
             message = (
                 f"⏳ **Lucky Draw Ended!**\n\n"
                 f"🎁 **Prize:** [Click Here]({giveaway['title']})\n"
-                f"📆 **Ended At:** {end_time_str} WIB\n"
                 f"🏆 **Winners:** {winner_mentions}\n"
                 f"👥 **Total Participants:** {total_participants}\n"
                 f"👤 **Hosted By:** {giveaway['organizer']}\n\n"
@@ -121,37 +115,25 @@ async def check_giveaway_expiry(context: ContextTypes.DEFAULT_TYPE):
             message = (
                 f"⏳ **Lucky Draw Ended!**\n\n"
                 f"🎁 **Prize:** [Click Here]({giveaway['title']})\n"
-                f"📆 **Ended At:** {end_time_str} WIB\n"
                 f"🏆 No participants joined 😢\n"
-                f"👥 **Total Participants:** {total_participants}\n"
                 f"👤 **Hosted By:** {giveaway['organizer']}\n\n"
                 f"Better luck next time!"
             )
 
         await context.bot.send_message(
-            chat_id=CHANNEL_ID,
+            chat_id=giveaway["channel_id"],
             text=message,
-            parse_mode="Markdown",
-            disable_web_page_preview=False
+            parse_mode="Markdown"
         )
 
-        # Hapus giveaway setelah diumumkan
         delete_giveaway(giveaway["id"])
 
-
-
 def main():
-    """Menjalankan bot."""
     app = Application.builder().token(TOKEN).pool_timeout(10).build()
-
-    # Menambahkan handler untuk perintah dan callback
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("newgiveaway", new_giveaway))
     app.add_handler(CallbackQueryHandler(join_giveaway, pattern="^join_"))
-
-    # Menjalankan pengecekan giveaway yang berakhir setiap 1 jam
     app.job_queue.run_repeating(check_giveaway_expiry, interval=60, first=10)
-
     logging.info("Bot is running...")
     app.run_polling()
 
