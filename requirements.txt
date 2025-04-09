@@ -1,4 +1,4 @@
-python-telegram-bot==20.7
-supabase-py==1.0.3
+python-telegram-bot
+supabase
 asyncio
 aiohttp
