@@ -1,7 +1,9 @@
 from telegram import Bot
-from config import TOKEN, REQUIRED_CHANNELS
+from config import TOKEN
 import asyncio
 import random
+from database import get_required_channels
+
 
 async def check_single_channel(bot, channel, user_id):
     """Cek apakah user sudah join channel tertentu."""
@@ -23,7 +25,7 @@ async def check_participation(user_id):
             async with semaphore:
                 return await check_single_channel(bot, channel, user_id)
 
-        tasks = [limited_check(channel) for channel in REQUIRED_CHANNELS]
+        tasks = [limited_check(channel) for channel in get_required_channels()]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         if any(isinstance(res, Exception) for res in results):
