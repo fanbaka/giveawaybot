@@ -1,13 +1,17 @@
 import logging
 import asyncio
 import random
+import os
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from database import set_post_channel, add_required_channel, remove_required_channel, get_required_channels, get_post_channel
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from config import TOKEN
 from database import create_giveaway, get_expired_giveaways, delete_giveaway, get_participants, add_participant
 from giveaway import check_participation
+
+TOKEN = os.environ.get("BOT_TOKEN")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 # Konfigurasi logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
